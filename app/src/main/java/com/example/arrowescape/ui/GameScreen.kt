@@ -3,8 +3,10 @@ package com.example.arrowescape.ui
 import android.content.SharedPreferences
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -33,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -44,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -76,17 +80,40 @@ import kotlinx.coroutines.launch
 import kotlin.math.floor
 import kotlin.math.min
 
-object Palette {
-    val background = Color(0xFFF5EBDD)
-    val ink = Color(0xFF2B2118)
-    val dot = Color(0xFFD9CBB6)
-    val red = Color(0xFFD64B3C)
-    val hint = Color(0xFFF2A83B)
-    val water = Color(0xFF4A9FE0)
-    val waterEmpty = Color(0xFFBDB3A6)
-    val title = Color(0xFFC8893A)
-    val subtitle = Color(0xFF8A4FD0)
-}
+class AppPalette(
+    val background: Color,
+    val ink: Color,
+    val dot: Color,
+    val red: Color,
+    val hint: Color,
+    val water: Color,
+    val waterEmpty: Color,
+    val title: Color,
+)
+
+val LightPalette = AppPalette(
+    background = Color(0xFFF5EBDD),
+    ink = Color(0xFF2B2118),
+    dot = Color(0xFFD9CBB6),
+    red = Color(0xFFD64B3C),
+    hint = Color(0xFFF2A83B),
+    water = Color(0xFF4A9FE0),
+    waterEmpty = Color(0xFFBDB3A6),
+    title = Color(0xFFC8893A),
+)
+
+val DarkPalette = AppPalette(
+    background = Color(0xFF1C1916),
+    ink = Color(0xFFEDE3D3),
+    dot = Color(0xFF4A423A),
+    red = Color(0xFFFF6B5B),
+    hint = Color(0xFFF5B04A),
+    water = Color(0xFF5DB0F0),
+    waterEmpty = Color(0xFF4F4840),
+    title = Color(0xFFE0A85A),
+)
+
+val LocalPalette = staticCompositionLocalOf { LightPalette }
 
 private const val MAX_LIVES = 3
 private const val HINTS_PER_LEVEL = 3
@@ -94,7 +121,9 @@ private const val HINTS_PER_LEVEL = 3
 private enum class Status { PLAYING, WON, LOST }
 
 /** A snake in motion: it occupies [length] consecutive points of [path], starting at [progress]. */
-private class MoveAnim(val path: List<Cell>, val length: Int) {
+private val SlideEasing = CubicBezierEasing(0.32f, 0f, 0.67f, 0f)
+
+private class MoveAnim(val path: List<Cell>, val length: Int, val escaping: Boolean = false) {
     val progress = Animatable(0f)
 }
 
@@ -124,6 +153,7 @@ fun App(prefs: SharedPreferences, audio: GameAudio) {
 
 @Composable
 private fun MenuScreen(prefs: SharedPreferences, audio: GameAudio, onPick: (Difficulty) -> Unit) {
+    val Palette = LocalPalette.current
     Column(
         Modifier
             .fillMaxSize()
@@ -174,6 +204,7 @@ private fun Difficulty.color() = when (this) {
 /** Same arrow as the app icon. */
 @Composable
 private fun Logo(modifier: Modifier) {
+    val Palette = LocalPalette.current
     Canvas(modifier) {
         val k = size.minDimension / 108f
         fun p(x: Float, y: Float) = Offset(x * k, y * k)
@@ -194,7 +225,10 @@ private fun Logo(modifier: Modifier) {
 
 @Composable
 private fun AudioToggles(audio: GameAudio) {
+    val theme = LocalThemeState.current
+    val dark = theme.isDark()
     Row(verticalAlignment = Alignment.CenterVertically) {
+        ToggleEmoji(if (dark) "☀️" else "🌙", true) { theme.toggle(dark) }
         ToggleEmoji(if (audio.soundOn) "🔊" else "🔇", true) { audio.toggleSound() }
         ToggleEmoji("🎵", audio.musicOn) { audio.toggleMusic() }
     }
@@ -241,6 +275,7 @@ private fun LevelPlay(
     onRestart: () -> Unit,
     onNext: () -> Unit,
 ) {
+    val Palette = LocalPalette.current
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     val board = remember { mutableStateListOf<Snake>().apply { addAll(level.snakes) } }
@@ -251,6 +286,7 @@ private fun LevelPlay(
     var hintId by remember { mutableStateOf<Int?>(null) }
     var status by remember { mutableStateOf(Status.PLAYING) }
     var scale by remember { mutableFloatStateOf(1f) }
+    val occupied by remember { derivedStateOf { Board.occupancy(board) } }
     var offset by remember { mutableStateOf(Offset.Zero) }
 
     fun tap(s: Snake) {
@@ -266,12 +302,13 @@ private fun LevelPlay(
             if (hintId == s.id) hintId = null
             val run = ray.size + s.cells.size
             val tail = generateSequence(s.head + s.dir) { it + s.dir }.take(run).toList()
-            val anim = MoveAnim(s.cells + tail, s.cells.size)
+            val anim = MoveAnim(s.cells + tail, s.cells.size, escaping = true)
             anims[s.id] = anim
             scope.launch {
+                // Gentle ease-in, then full speed off the edge (no slowdown while still visible).
                 anim.progress.animateTo(
                     run.toFloat(),
-                    tween((run * 30).coerceIn(250, 900), easing = FastOutLinearInEasing),
+                    tween((260 + run * 18).coerceAtMost(1000), easing = SlideEasing),
                 )
                 anims.remove(s.id)
                 if (board.isEmpty() && anims.isEmpty() && status == Status.PLAYING) {
@@ -288,8 +325,8 @@ private fun LevelPlay(
             val anim = MoveAnim(s.cells + ray.take(blockAt + 1), s.cells.size)
             anims[s.id] = anim
             scope.launch {
-                anim.progress.animateTo(blockAt + 0.25f, tween(80 + blockAt * 35))
-                anim.progress.animateTo(0f, tween(180 + blockAt * 30, easing = FastOutSlowInEasing))
+                anim.progress.animateTo(blockAt + 0.25f, tween(90 + blockAt * 40, easing = FastOutSlowInEasing))
+                anim.progress.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow))
                 anims.remove(s.id)
                 delay(600)
                 red.remove(s.id)
@@ -413,7 +450,7 @@ private fun LevelPlay(
                 translate(offset.x, offset.y)
                 scale(scale, scale, pivot = Offset.Zero)
             }) {
-                val occ = Board.occupancy(board)
+                val occ = occupied
                 val dotR = geo.cell * 0.06f
                 for (y in 0 until level.height) for (x in 0 until level.width) {
                     if (!occ.containsKey(Cell(x, y))) {
@@ -431,7 +468,13 @@ private fun LevelPlay(
                     if (!anims.containsKey(s.id)) drawSnake(s.cells, 0f, s.cells.size, colorFor(s.id), geo)
                 }
                 for ((id, a) in anims) {
-                    drawSnake(a.path, a.progress.value, a.length, colorFor(id), geo)
+                    val p = a.progress.value
+                    // Fade out over the last stretch as it leaves the board.
+                    val alpha = if (a.escaping) {
+                        val total = (a.path.size - a.length).toFloat()
+                        ((total - p) / (a.length + 1f)).coerceIn(0f, 1f)
+                    } else 1f
+                    drawSnake(a.path, p, a.length, colorFor(id).copy(alpha = colorFor(id).alpha * alpha), geo)
                 }
             }
         }
@@ -506,6 +549,7 @@ private fun DrawScope.drawSnake(path: List<Cell>, start: Float, length: Int, col
 
 @Composable
 private fun Drop(filled: Boolean) {
+    val Palette = LocalPalette.current
     Canvas(Modifier.size(width = 16.dp, height = 22.dp)) {
         val w = size.width
         val h = size.height

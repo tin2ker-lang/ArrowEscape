@@ -15,8 +15,8 @@ object LevelGenerator {
     /** Board width and longest arrow for a level; boards grow slowly within each difficulty. */
     private fun params(d: Difficulty, n: Int): Pair<Int, Int> = when (d) {
         Difficulty.EASY -> (5 + n / 5).coerceAtMost(9) to (3 + n / 6).coerceAtMost(6)
-        Difficulty.MEDIUM -> (9 + n / 5).coerceAtMost(14) to (5 + n / 6).coerceAtMost(10)
-        Difficulty.HARD -> (14 + n / 5).coerceAtMost(20) to (8 + n / 5).coerceAtMost(16)
+        Difficulty.MEDIUM -> (10 + n / 4).coerceAtMost(17) to (5 + n / 6).coerceAtMost(10)
+        Difficulty.HARD -> (18 + n / 4).coerceAtMost(25) to (8 + n / 5).coerceAtMost(14)
     }
 
     fun generate(difficulty: Difficulty, number: Int): Level {

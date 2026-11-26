@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.ArrowEscape" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#1C1916</item>
+        <item name="android:statusBarColor">#1C1916</item>
+        <item name="android:navigationBarColor">#1C1916</item>
+    </style>
+</resources>
