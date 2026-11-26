@@ -28,8 +28,11 @@ class GameAudio(context: Context, private val prefs: SharedPreferences) {
     private val blockedId = pool.load(appContext, R.raw.blocked, 1)
     private val winId = pool.load(appContext, R.raw.win, 1)
 
-    // Pentatonic steps, so consecutive taps sound like a little melody.
-    private val pitches = floatArrayOf(0.75f, 0.8333f, 1.0f, 1.125f, 1.25f, 1.5f)
+    private val sparkleId = pool.load(appContext, R.raw.sparkle, 1)
+    private val comboId = pool.load(appContext, R.raw.combo, 1)
+
+    // Pentatonic steps (SoundPool allows 0.5x..2x), so taps always sound musical.
+    private val pitches = floatArrayOf(0.75f, 0.8333f, 1.0f, 1.125f, 1.25f, 1.5f, 1.6667f, 2.0f)
     private var lastPitch = 2
 
     private var music: MediaPlayer? = null
@@ -51,12 +54,30 @@ class GameAudio(context: Context, private val prefs: SharedPreferences) {
         if (musicOn) startMusic() else music?.pause()
     }
 
-    fun playEscape() {
+    /**
+     * [combo] is how many arrows have escaped in quick succession (1 = a single tap).
+     * The note climbs the scale and gets louder as the combo grows; from 3 a sparkle is
+     * layered on top, and every 5th in a row adds a big chord bloom.
+     */
+    fun playEscape(combo: Int = 1) {
         if (!soundOn) return
-        // Wander up or down the scale by one or two steps.
-        val step = listOf(-2, -1, 1, 2).random()
-        lastPitch = (lastPitch + step).coerceIn(0, pitches.lastIndex)
-        pool.play(escapeId, 0.7f, 0.7f, 1, 0, pitches[lastPitch])
+        if (combo <= 1) {
+            // Wander up or down the lower part of the scale.
+            val step = listOf(-2, -1, 1, 2).random()
+            lastPitch = (lastPitch + step).coerceIn(0, 4)
+        } else {
+            lastPitch = (combo + 1).coerceAtMost(pitches.lastIndex)
+        }
+        val vol = (0.6f + 0.06f * combo).coerceAtMost(1f)
+        pool.play(escapeId, vol, vol, 1, 0, pitches[lastPitch])
+        if (combo >= 3) {
+            val sv = (0.25f + 0.08f * (combo - 3)).coerceAtMost(0.8f)
+            val rate = (0.9f + 0.05f * (combo - 3)).coerceAtMost(1.5f)
+            pool.play(sparkleId, sv, sv, 2, 0, rate)
+        }
+        if (combo >= 5 && combo % 5 == 0) {
+            pool.play(comboId, 1f, 1f, 3, 0, 1f)
+        }
     }
 
     fun playBlocked() {
