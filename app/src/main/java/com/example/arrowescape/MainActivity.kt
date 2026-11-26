@@ -10,13 +10,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
-import com.example.arrowescape.ui.GameScreen
+import com.example.arrowescape.ui.App
 import com.example.arrowescape.ui.Palette
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var audio: GameAudio
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("arrow_escape", Context.MODE_PRIVATE)
+        audio = GameAudio(this, prefs)
         setContent {
             MaterialTheme {
                 Box(
@@ -25,9 +29,24 @@ class MainActivity : ComponentActivity() {
                         .background(Palette.background)
                         .systemBarsPadding()
                 ) {
-                    GameScreen(prefs)
+                    App(prefs, audio)
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        audio.onForeground()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        audio.onBackground()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        audio.release()
     }
 }

@@ -8,20 +8,21 @@ import kotlin.random.Random
  * order doesn't matter). Any snake left stuck is flipped to point the other way,
  * or else split in two (tiny ones are deleted). The result always has a solution.
  *
- * The same level number always produces the same puzzle.
+ * The same difficulty and level number always produce the same puzzle.
  */
 object LevelGenerator {
 
-    fun sizeFor(number: Int): Pair<Int, Int> {
-        val w = (5 + number / 3).coerceAtMost(20)
-        val h = (w * 1.45f).toInt()
-        return w to h
+    /** Board width and longest arrow for a level; boards grow slowly within each difficulty. */
+    private fun params(d: Difficulty, n: Int): Pair<Int, Int> = when (d) {
+        Difficulty.EASY -> (5 + n / 5).coerceAtMost(9) to (3 + n / 6).coerceAtMost(6)
+        Difficulty.MEDIUM -> (9 + n / 5).coerceAtMost(14) to (5 + n / 6).coerceAtMost(10)
+        Difficulty.HARD -> (14 + n / 5).coerceAtMost(20) to (8 + n / 5).coerceAtMost(16)
     }
 
-    fun generate(number: Int): Level {
-        val rnd = Random(number * 7919L + 17L)
-        val (w, h) = sizeFor(number)
-        val maxLen = (4 + number / 4).coerceAtMost(16)
+    fun generate(difficulty: Difficulty, number: Int): Level {
+        val rnd = Random(difficulty.ordinal * 1_000_003L + number * 7919L + 17L)
+        val (w, maxLen) = params(difficulty, number)
+        val h = (w * 1.45f).toInt()
 
         // 1. Pack the grid with random walks.
         val owner = Array(h) { IntArray(w) { -1 } }
@@ -99,6 +100,6 @@ object LevelGenerator {
         val snakes = current.values
             .sortedBy { it.id }
             .mapIndexed { i, s -> s.copy(id = i) }
-        return Level(number, w, h, snakes)
+        return Level(difficulty, number, w, h, snakes)
     }
 }

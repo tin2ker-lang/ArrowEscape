@@ -26,19 +26,17 @@ data class Snake(val id: Int, val cells: List<Cell>) {
     fun reversed() = copy(cells = cells.reversed())
 }
 
+enum class Difficulty(val label: String) {
+    EASY("Easy"), MEDIUM("Medium"), HARD("Hard")
+}
+
 data class Level(
+    val difficulty: Difficulty,
     val number: Int,
     val width: Int,
     val height: Int,
     val snakes: List<Snake>,
-) {
-    val difficulty: String
-        get() = when {
-            number < 10 -> "Easy"
-            number < 40 -> "Medium"
-            else -> "Hard"
-        }
-}
+)
 
 object Board {
     /** Cells in front of the snake's head, up to the board edge. */
